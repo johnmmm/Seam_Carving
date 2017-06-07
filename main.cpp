@@ -2,8 +2,11 @@
 #include "opencv/highgui.h"
 #include "opencv/cv.h"
 #include <stdio.h>
-#define BNUM 220
-#define HNUM 220//用来管理高度裁剪的
+#define NUM 200
+#define BNUM 50
+#define HNUM 30//用来管理高度裁剪的
+
+using namespace std;
 
 //计算能量曲线
 void calculateColEnergy(cv::Mat& srcMat,cv::Mat& dstMat,cv::Mat& traceMat)  //Mat 矩阵
@@ -57,57 +60,6 @@ void calculateColEnergy(cv::Mat& srcMat,cv::Mat& dstMat,cv::Mat& traceMat)  //Ma
     }
 }
 
-void calculateRowEnergy(cv::Mat& srcMat,cv::Mat& dstMat,cv::Mat& traceMat)  //Mat 矩阵
-{
-    srcMat.copyTo(dstMat);   //不用“=”，防止两个矩阵指向的都是同一个矩阵，现在只需要传里面的数值
-    
-    for (int i = 1;i < srcMat.cols;i++)  //从第2列开始计算
-    {
-        //第一列
-        if (dstMat.at<float>(0,i-1) <= dstMat.at<float>(1,i-1))  //.at 获取像素
-        {
-            dstMat.at<float>(0,i) = srcMat.at<float>(0,i) + dstMat.at<float>(0,i-1);
-            traceMat.at<float>(0,i) = 1; //traceMat记录当前位置的上一行应取那个位置，上左为0，上中1，上右为2
-        }
-        else
-        {
-            dstMat.at<float>(0,i) = srcMat.at<float>(0,i) + dstMat.at<float>(1,i-1);
-            traceMat.at<float>(0,i) = 2;
-        }
-        
-        //中间列
-        for (int j = 1;j < srcMat.rows-1;j++)  //获取每一个点的能量路径
-        {
-            float k[3];  //获取上一行对应三个位置的像素作比较
-            k[0] = dstMat.at<float>(j-1,i-1);
-            k[1] = dstMat.at<float>(j-1,i);
-            k[2] = dstMat.at<float>(j-1,i+1);
-            
-            int index = 0;
-            if (k[1] < k[0])
-                index = 1;
-            if (k[2] < k[index])
-                index = 2;
-            dstMat.at<float>(j,i) = srcMat.at<float>(j,i) + dstMat.at<float>(j-1+index,i-1);
-            traceMat.at<float>(j,i) = index;
-            
-        }
-        
-        //最后一行
-        if (dstMat.at<float>(srcMat.rows-1,i-1) <= dstMat.at<float>(srcMat.rows-2,i-1))
-        {
-            dstMat.at<float>(srcMat.rows-1,i) = srcMat.at<float>(srcMat.rows-1,i) + dstMat.at<float>(srcMat.rows-1,i-1);
-            traceMat.at<float>(srcMat.rows-1,i) = 1;
-        }
-        else
-        {
-            dstMat.at<float>(srcMat.rows-1,i) = srcMat.at<float>(srcMat.rows-1,i) + dstMat.at<float>(srcMat.rows-2,i-1);
-            traceMat.at<float>(srcMat.rows-1,i) = 0;
-        }
-        
-    }
-}
-
 // 找出最小能量线
 void getMinColEnergyTrace(const cv::Mat& energyMat,const cv::Mat& traceMat,cv::Mat& minTrace)
 {
@@ -125,65 +77,23 @@ void getMinColEnergyTrace(const cv::Mat& energyMat,const cv::Mat& traceMat,cv::M
     } // end for i = ...
     
     // 以下根据traceMat，得到minTrace，minTrace是多行一列矩阵
+    minTrace.at<float>(row,0) = index;
+    int tmpIndex = index;
+        
+    for (int i = row;i > 0;i--)
     {
-        minTrace.at<float>(row,0) = index;
-        
-        int tmpIndex = index;
-        
-        for (int i = row;i > 0;i--)
+        int temp = traceMat.at<float>(i,tmpIndex);// 当前位置traceMat所存的值
+            
+        if (temp == 0) // 往左走
         {
-            int temp = traceMat.at<float>(i,tmpIndex);// 当前位置traceMat所存的值
-            
-            if (temp == 0) // 往左走
-            {
-                tmpIndex = tmpIndex - 1;
-            }
-            else if (temp == 2) // 往右走
-            {
-                tmpIndex = tmpIndex + 1;
-            } // 如果temp = 1，则往正上走，tmpIndex不需要做修改
-            
-            minTrace.at<float>(i-1,0) = tmpIndex;
+            tmpIndex = tmpIndex - 1;
         }
-    }
-}
-
-void getMinRowEnergyTrace(const cv::Mat& energyMat,const cv::Mat& traceMat,cv::Mat& minTrace)
-{
-    int col = energyMat.cols - 1;// 取的是energyMat最后一列的数据，所以行标是cols-1
-    
-    int index = 0;	// 保存的是最小那条轨迹的最下面点在图像中的列标
-    
-    // 获得index，即最后那行最小值的位置
-    for (int i = 1;i < energyMat.rows;i++)
-    {
-        if (energyMat.at<float>(i,col) < energyMat.at<float>(index,col))
+        else if (temp == 2) // 往右走
         {
-            index = i;
-        } // end if
-    } // end for i = ...
-    
-    // 以下根据traceMat，得到minTrace，minTrace是多行一列矩阵
-    {
-        minTrace.at<float>(0,col) = index;
-        
-        int tmpIndex = index;
-        
-        for (int i = col;i > 0;i--)
-        {
-            int temp = traceMat.at<float>(tmpIndex,i);// 当前位置traceMat所存的值
+            tmpIndex = tmpIndex + 1;
+        } // 如果temp = 1，则往正上走，tmpIndex不需要做修改
             
-            if (temp == 0) // 往左走
-            {
-                tmpIndex = tmpIndex - 1;
-            }
-            else if (temp == 2) // 往右走
-            {
-                tmpIndex = tmpIndex + 1;
-            } // 如果temp = 1，则往正上走，tmpIndex不需要做修改
-            
-            minTrace.at<float>(0,i-1) = tmpIndex;
-        }
+        minTrace.at<float>(i-1,0) = tmpIndex;
     }
 }
 
@@ -215,36 +125,8 @@ void delOneCol(cv::Mat& srcMat,cv::Mat& dstMat,cv::Mat& minTrace,cv::Mat& beDele
     }
 }
 
-//删除一行
-void delOneRow(cv::Mat& srcMat,cv::Mat& dstMat,cv::Mat& minTrace,cv::Mat& beDeletedLine)
-{
-    for (int i = 0;i < dstMat.cols;i++)  //对目标图像进行操作
-    {
-        int k = minTrace.at<float>(0,i);
-        
-        for (int j = 0;j < k;j++)  //删除列前的元素复制
-        {
-            dstMat.at<cv::Vec3b>(j,i)[0] = srcMat.at<cv::Vec3b>(j,i)[0];  // 8U 类型的 RGB 彩色图像 [i] 存放bgr的值
-            dstMat.at<cv::Vec3b>(j,i)[1] = srcMat.at<cv::Vec3b>(j,i)[1];
-            dstMat.at<cv::Vec3b>(j,i)[2] = srcMat.at<cv::Vec3b>(j,i)[2];
-        }
-        for (int j = k;j < dstMat.rows-1;j++)  //复制删除列后的元素 最后一列默认不处理
-        {
-            if (j == dstMat.rows-1)
-                continue;
-            dstMat.at<cv::Vec3b>(j,i)[0] = srcMat.at<cv::Vec3b>(j+1,i)[0];
-            dstMat.at<cv::Vec3b>(j,i)[1] = srcMat.at<cv::Vec3b>(j+1,i)[1];
-            dstMat.at<cv::Vec3b>(j,i)[2] = srcMat.at<cv::Vec3b>(j+1,i)[2];
-            
-        }
-        beDeletedLine.at<cv::Vec3b>(0,i)[0] = srcMat.at<cv::Vec3b>(k,i)[0];
-        beDeletedLine.at<cv::Vec3b>(0,i)[1] = srcMat.at<cv::Vec3b>(k,i)[1];
-        beDeletedLine.at<cv::Vec3b>(0,i)[2] = srcMat.at<cv::Vec3b>(k,i)[2];
-    }
-}
-
 //跑两种裁剪
-void run_a_col(cv::Mat& image,cv::Mat& outImage)
+int run_a_col(cv::Mat& image,cv::Mat& outImage)
 {
     //cv::Mat& outMinTrace,cv::Mat& outDeletedLine
     cv::Mat image_gray(image.rows,image.cols,CV_8U,cv::Scalar(0));  //scalar 初始化为0 cv_8u 单通道阵列
@@ -281,6 +163,7 @@ void run_a_col(cv::Mat& image,cv::Mat& outImage)
     getMinColEnergyTrace(energyMat,traceMat,minTrace);
     
     //显示最小能量线
+    int totalEnergy = 0;
     cv::Mat tmpImage(image.rows,image.cols,image.type());
     image.copyTo(tmpImage);  //复制
     for (int i = 0;i < image.rows;i++)
@@ -289,6 +172,7 @@ void run_a_col(cv::Mat& image,cv::Mat& outImage)
         tmpImage.at<cv::Vec3b>(i,k)[0] = 0;
         tmpImage.at<cv::Vec3b>(i,k)[1] = 0;
         tmpImage.at<cv::Vec3b>(i,k)[2] = 255;
+        totalEnergy += energyMat.at<float>(i,k);//计算总的值，用来计算第二层矩阵
     }
     cv::imshow("Image Show Window (A)",tmpImage);  //显示最小能量线，过程
     
@@ -299,11 +183,13 @@ void run_a_col(cv::Mat& image,cv::Mat& outImage)
     //cv::imshow("Image Show Window",image2);
     
     image2.copyTo(outImage);
-    //minTrace.copyTo(outMinTrace);
-    //beDeletedLine.copyTo(outDeletedLine);
+//    minTrace.copyTo(outMinTrace);
+//    beDeletedLine.copyTo(outDeletedLine);
+    
+    return totalEnergy;
 }
 
-void run_a_row(cv::Mat& image,cv::Mat& outImage)
+int run_a_row(cv::Mat& image,cv::Mat& outImage)
 {
     cv::Mat reverseY, reverseM(image.cols,image.rows,image.type());
     image.copyTo(reverseY);
@@ -351,6 +237,7 @@ void run_a_row(cv::Mat& image,cv::Mat& outImage)
     getMinColEnergyTrace(energyMat,traceMat,minTrace);
     
     //显示最小能量线
+    int totalEnergy = 0;
     cv::Mat tmpImage(image.rows,image.cols,image.type());
     image.copyTo(tmpImage);  //复制
     for (int i = 0;i < image.rows;i++)
@@ -359,7 +246,9 @@ void run_a_row(cv::Mat& image,cv::Mat& outImage)
         tmpImage.at<cv::Vec3b>(i,k)[0] = 0;
         tmpImage.at<cv::Vec3b>(i,k)[1] = 0;
         tmpImage.at<cv::Vec3b>(i,k)[2] = 255;
+        totalEnergy += energyMat.at<float>(i,k);//计算总的值，用来计算第二层矩阵
     }
+    
     //显示的时候翻转过来
     for(int i = 0; i < image.rows; i++)
         for(int j = 0; j < image.cols; j++)
@@ -391,6 +280,8 @@ void run_a_row(cv::Mat& image,cv::Mat& outImage)
     ///image2.copyTo(outImage);
     //minTrace.copyTo(outMinTrace);
     //beDeletedLine.copyTo(outDeletedLine);
+    
+    return totalEnergy;
 }
 
 //恢复？？
@@ -443,24 +334,84 @@ int main(int argc,char** argv)
     cv::Mat tmpMat;
     image.copyTo(tmpMat); 
     
-    //cv::Mat traces[BNUM];
-    //cv::Mat deletedLines[BNUM];//记录裁剪一列所用的
+//    int total = 0;
+//    cv::Mat traces[NUM];
+//    cv::Mat deletedLines[NUM];//记录裁剪一列所用的
     
     cv::Mat outImage;
     
     cv::waitKey(2000);
     
-    //共同裁剪
-    for (int i = 0;i < BNUM;i++)
-    {
-        run_a_col(tmpMat,outImage);
-        tmpMat = outImage;
-        //cv::waitKey(50);
-        run_a_row(tmpMat,outImage);
-        tmpMat = outImage;
-        cv::waitKey(50);
-    }
+    //双向裁剪，计算T矩阵先！
+    long long T[BNUM][HNUM] = {0};
+    long long tmpt = 0;
+    cv::Mat rMat,cMat[HNUM+1],tmping,tmping1;
+    T[0][0]=0;
+    image.copyTo(rMat);
+    image.copyTo(tmping);
+    image.copyTo(tmping1);
+    for(int i = 0; i <= BNUM; i++)
+        for(int j = 0; j <= HNUM; j++)
+        {
+            if(j == 0)
+            {
+                rMat.copyTo(tmping);//先复制，在进行下一个的推算
+                if(i == BNUM)
+                    continue;
+                rMat.copyTo(tmping1);
+                T[i+1][j] = T[i][j] + run_a_col(rMat, tmping1);
+                tmping1.copyTo(rMat);
+            }
+            else//在后面都是从前面获得答案的
+            {
+                if(i == 0)
+                {
+                    tmping.copyTo(tmping1);
+                    T[i][j] = T[i][j-1] + run_a_row(tmping, tmping1);
+                    tmping1.copyTo(cMat[j]);
+                    tmping1.copyTo(tmping);
+                }
+                else
+                {
+                    cMat[j].copyTo(tmping1);
+                    T[i][j] = T[i-1][j] + run_a_col(cMat[j], tmping1);
+                    tmping.copyTo(tmping1);
+                    tmpt = T[i][j-1] + run_a_row(tmping, tmping1);
+                    if(tmpt < T[i][j])//认为现在出现的更好
+                    {
+                        T[i][j] = tmpt;//改变T的值
+                        tmping1.copyTo(cMat[j]);
+                        tmping1.copyTo(tmping);
+                    }
+                    else
+                    {
+                        cMat[j].copyTo(tmping1);
+                        run_a_col(cMat[j], tmping1);//从新裁剪
+                        tmping1.copyTo(cMat[j]);
+                        tmping1.copyTo(tmping);
+                    }
+                    
+                }
+            }
+            
+            
+            cout << i << ", " << j << endl;
+        }
     
+    cout << T[BNUM][HNUM] << endl;
+    
+    
+    //共同裁剪
+//    for (int i = 0;i < NUM;i++)
+//    {
+//        run_a_col(tmpMat,outImage);
+//        tmpMat = outImage;
+//        //cv::waitKey(50);
+//        run_a_row(tmpMat,outImage);
+//        tmpMat = outImage;
+//        cv::waitKey(50);
+//    }
+//    
     //分开进行不同程度的裁剪
 //    for (int i = 0;i < BNUM;i++)
 //    {
@@ -472,10 +423,10 @@ int main(int argc,char** argv)
 //    {
 //        run_a_row(tmpMat,outImage);
 //        tmpMat = outImage;
-//        cv::waitKey(50);
+//        //cv::waitKey(50);
 //    }
     
-    cv::imwrite("/Users/mac/Desktop/myself/pictures/my space/output.bmp", outImage);
+    cv::imwrite("/Users/mac/Desktop/myself/pictures/my space/output.bmp", cMat[HNUM]);
     
     //显示恢复路径
 //    cv::Mat tmpMat2;
@@ -488,7 +439,7 @@ int main(int argc,char** argv)
 //        tmpMat2 = outImage;
 //        cv::waitKey(50);
 //    }
-    cv::waitKey(115000);
+    //cv::waitKey(115000);
     return 0;
     
 }
